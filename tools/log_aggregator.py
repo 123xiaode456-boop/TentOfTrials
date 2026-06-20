@@ -412,7 +412,10 @@ def parse_args():
     parser.add_argument("--format", choices=["json", "csv", "html"], default="json", help="Output format")
     parser.add_argument("--search", help="Search for a string in logs")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if not args.input and not args.dir:
+        parser.error("at least one input source is required: use --input or --dir")
+    return args
 
 
 def main():
@@ -425,14 +428,24 @@ def main():
     if args.input:
         if '*' in args.input or '?' in args.input:
             import glob
-            for path in glob.glob(args.input):
+            paths = glob.glob(args.input)
+            if not paths:
+                logger.error(f"No input files matched: {args.input}")
+                return 2
+            for path in paths:
                 count = aggregator.process_file(path)
                 logger.info(f"Processed {path}: {count} entries")
         else:
+            if not os.path.isfile(args.input):
+                logger.error(f"Input file not found: {args.input}")
+                return 2
             count = aggregator.process_file(args.input)
             logger.info(f"Processed {args.input}: {count} entries")
 
     if args.dir:
+        if not os.path.isdir(args.dir):
+            logger.error(f"Input directory not found: {args.dir}")
+            return 2
         count = aggregator.process_directory(args.dir)
         logger.info(f"Processed directory {args.dir}: {count} entries")
 
@@ -445,9 +458,10 @@ def main():
             print(f"  ... and {len(results) - 20} more")
 
     summary = aggregator.get_summary()
+    time_range = summary.get('time_range') or {}
     print(f"\nSummary:")
     print(f"  Total entries: {summary['total_entries']:,}")
-    print(f"  Time range: {summary.get('time_range', {}).get('start', 'N/A')} to {summary.get('time_range', {}).get('end', 'N/A')}")
+    print(f"  Time range: {time_range.get('start', 'N/A')} to {time_range.get('end', 'N/A')}")
     print(f"  Error rate: {summary.get('error_rate', 0)}%")
     print(f"  By level: {', '.join(f'{k}={v}' for k, v in summary.get('by_level', {}).items())}")
     print(f"  By service: {', '.join(f'{k}={v}' for k, v in summary.get('by_service', {}).items())}")
@@ -463,4 +477,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
